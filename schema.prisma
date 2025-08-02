@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BusinessOwner {
+  id                  Int       @id @default(autoincrement())
+  name                String
+  email               String    @unique
+  password            String
+  phone               String?
+  address             String?
+  role                String
+  profilePhotoUrl     String?
+  businessId          Int?
+  qrCodeUrl           String? 
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  business            Business? @relation(fields: [businessId], references: [id])
+  restaurantEditCount Int       @default(0)
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  email     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Business {
+  id        Int      @id @default(autoincrement())
+  name      String
+  type      String   @default("restaurant")
+  tagline   String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan       Plan?
+  products   Product[]
+  users      BusinessOwner[]
+  customers  Customer[]
+  orders     Order[]
+  categories Category[]
+  bills      Bill[]
+
+  tables             Table[]
+  inventory          InventoryItem[]
+  coupons            Coupon[]
+  whatsappCredential WhatsAppCredential?
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  businessId  Int
+  name        String
+  price       Float
+  description String?
+  productType String
+  metadata    Json?
+  isActive    Boolean  @default(true) // ✅ Add this if missing
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id])
+
+  orderItems OrderItem[]
+}
+
+model Plan {
+  id              Int      @id @default(autoincrement())
+  businessId      Int      @unique
+  name            String
+  features        String[]
+  expiresAt       DateTime
+  paymentProofUrl String?
+  status          String   @default("Pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  business        Business @relation(fields: [businessId], references: [id])
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  businessId    Int
+  customerId    Int?
+  customer      Customer?   @relation(fields: [customerId], references: [id]) // ✅ Add this line
+  tableNumber   Int
+  totalAmount   Float?
+  paymentMethod String
+  estimatedTime String?
+  status        String      @default("Pending")
+  createdAt     DateTime    @default(now())
+ bill        Bill?    @relation("OrderToBill") // ✅ relation name
+  items         OrderItem[]
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@map("orders")
+}
+
+model Category {
+  id         Int      @id @default(autoincrement())
+  businessId Int
+  name       String
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  dishes     Dish[]
+  metadata   Json?
+
+  business Business @relation(fields: [businessId], references: [id])
+}
+
+model Dish {
+  id         Int      @id @default(autoincrement())
+  name       String
+  image      String
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model OrderItem {
+  id        Int    @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
+  price     Float
+  name      String
+  status    String @default("Pending") // ✅ Add this line
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade) // ✅ relation added
+
+  @@map("order_items")
+}
+
+model Bill {
+  id                Int      @id @default(autoincrement())
+  orderId           Int      @unique
+  businessId        Int
+  vatLow            Float?   // ✅ newly added
+  vatHigh           Float?   // ✅ newly added
+  serviceTax        Float?   // ✅ newly added
+  serviceCharge     Float?   // ✅ newly added
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  order             Order    @relation("OrderToBill", fields: [orderId], references: [id]) // ✅ use same name
+  business          Business @relation(fields: [businessId], references: [id])
+
+  @@map("bills")
+}
+
+model InventoryItem {
+  id         Int      @id @default(autoincrement())
+  name       String
+  quantity   Float
+  unit       String
+  threshold  Float
+  businessId Int
+  business   Business @relation(fields: [businessId], references: [id])
+  updatedAt  DateTime @updatedAt
+}
+
+model Table {
+  id          Int      @id @default(autoincrement())
+  tableNumber Int
+  businessId  Int
+  isBooked    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id])
+  updatedAt DateTime @updatedAt
+
+  @@unique([tableNumber, businessId]) // Prevent duplicate tables for same business
+}
+
+model Coupon {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  description   String
+  discountType  String // "percentage" or "flat"
+  discountValue Float
+  maxDiscount   Float?
+  minOrderValue Float
+  validFrom     DateTime
+  validTill     DateTime
+  usageLimit    Int
+  usedCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  businessId Int
+  business   Business @relation(fields: [businessId], references: [id])
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement()) // Primary key
+  customerId      Int                                      // ← ❌ Remove @unique here
+  name            String
+  email           String
+  password        String
+  mobile          String
+  businessId      Int
+  totalOrders     Int       @default(0)
+  totalMoneySpent Float     @default(0.0)
+  points          Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  business        Business  @relation(fields: [businessId], references: [id])
+  orders          Order[]
+
+  // ✅ Allow same customerId in different businesses:
+  @@unique([customerId, businessId])
+  @@unique([email, businessId])
+}
+
+model WhatsAppCredential {
+  id             Int    @id @default(autoincrement())
+  businessId     Int    @unique
+  phoneNumberId  String
+  accessToken    String
+  wabaId         String
+  whatsappNumber String
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@map("whatsapp_credentials") // optional: custom table name in DB
+}
